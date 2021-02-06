@@ -6,50 +6,61 @@ using System.Linq;
 
 namespace DuplicateImageFinder
 {
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            var hashedFiles = new List<FileWithHash>();
-            using (SHA1CryptoServiceProvider sha1 = new SHA1CryptoServiceProvider())
-            {
-                foreach (var file in GetAllFiles())
-                {
-                    using (MemoryStream ms = new MemoryStream())
-                    {
-                        var byteArray = File.ReadAllBytes(file);
-                        var hash = Convert.ToBase64String(sha1.ComputeHash(byteArray));
+            var hashedFiles = ProcessFiles();
 
-                        hashedFiles.Add(new FileWithHash
-                        {
-                            Path = file,
-                            Hash = hash
-                        });
-                    }
-                }
+            var filesToDelete = GetFilesToDelete(hashedFiles);
+
+            foreach (var duplicate in filesToDelete)
+            {
+                Console.WriteLine($"{duplicate.Path} created at {duplicate.Date.ToShortDateString()}");
             }
 
-            var duplicates = hashedFiles.GroupBy(f => f.Hash).Where(f => f.Skip(1).Any()).SelectMany(c => c);
-
-            foreach (var duplicate in duplicates)
-            {
-                Console.WriteLine(duplicate.Path);
-            }
-            
-            Console.WriteLine("Done. Press any key to continue.");
-
+            Console.WriteLine($"{filesToDelete.Count()} file(s) deleted. Press any key to continue.");
             Console.ReadKey();
         }
 
-        private static string[] GetAllFiles()
+        private static IEnumerable<FileWithHash> ProcessFiles()
         {
-            return Directory.GetFiles(@"C:\Users\Home\Desktop\2017-08\", "*.jpdg");
+            using var sha1 = new SHA1CryptoServiceProvider();
+            return
+                (from file in GetAllFiles()
+                 let byteArray = File.ReadAllBytes(file)
+                 let hash = Convert.ToBase64String(sha1.ComputeHash(byteArray))
+                 select new FileWithHash
+                 {
+                     Path = file,
+                     Hash = hash,
+                     Date = File.GetLastWriteTime(file)
+                 }).ToList();
+        }
+
+        private static IList<FileWithHash> GetFilesToDelete(IEnumerable<FileWithHash> hashedFiles)
+        {
+            return hashedFiles
+                .GroupBy(f => f.Hash)
+                .Where(f => f.Skip(1).Any())
+                .SelectMany(c => c)
+                .OrderBy(f => f.Date)
+                .ThenByDescending(f => f.Path)
+                .Skip(1)
+                .ToList();
+        }
+
+        private static IEnumerable<string> GetAllFiles()
+        {
+            // Put into config / startup args
+            return Directory.GetFiles(@"C:\Users\bob\Desktop\pics\", "*.*");
         }
 
         private class FileWithHash
         {
             public string Path { get; set; }
             public string Hash { get; set; }
+            public DateTime Date { get; set; }
         }
     }
 }
